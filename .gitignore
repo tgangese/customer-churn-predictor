@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual env - NEVER push this
+venv/
+.venv/
+env/
+
+# OS / Editor
+.DS_Store
+.vscode/
+
+# Optional - uncomment if you don't want to push data
+# data/

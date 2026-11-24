@@ -1,10 +1,10 @@
 import pandas as pd
-from sklearn.model_selection import train_test_split
+import pickle
+from sklearn.model_selection import train_test_split, StratifiedKFold, cross_val_score
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, f1_score
-import pickle
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, f1_score, precision_score
 
 # Load data
 df = pd.read_csv("data/WA_Fn-UseC_-Telco-Customer-Churn.csv")
@@ -112,6 +112,26 @@ print(feat_imp.head(5).to_string(index=False))
 print("\nBottom 3 Features:")
 print(feat_imp.tail(3).to_string(index=False))
 
+print("\n--- Cross-Validation + Dollar Cost ---")
+# One split can be lucky. CV checks 5 different splits.
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+cv_scores = cross_val_score(lr_bal, X_train_scaled, y_train, cv=cv, scoring='recall')
+print(f"CV Recall: {cv_scores.mean():.3f} +/- {cv_scores.std():.3f}")
+print("CV scores per fold:", [round(s, 3) for s in cv_scores])
+
+# Turn metrics into money: missed churner = $500, false alarm = $10
+# confusion = [[TN, FP], [FN, TP]]
+tn, fp, fn, tp = confusion_matrix(y_test, y_pred_bal).ravel()
+cost_balanced = 500 * fn + 10 * fp
+print(f"\nBalanced model cost: ${cost_balanced} (FN={fn} x $500 + FP={fp} x $10)")
+
+# Compare: what would normal model cost?
+tn2, fp2, fn2, tp2 = confusion_matrix(y_test, y_pred_lr).ravel()
+cost_normal = 500 * fn2 + 10 * fp2
+print(f"Normal model cost: ${cost_normal} (FN={fn2} x $500 + FP={fp2} x $10)")
+print(f"Saved by balanced model: ${cost_normal - cost_balanced}")
+print(f"Balanced Precision: {precision_score(y_test, y_pred_bal):.3f} - we trade some precision for recall")
+
 print("\n--- Save model for later ---")
 # Retrain balanced model on full data so we can use it without retraining every time
 scaler_full = StandardScaler()
@@ -128,3 +148,14 @@ with open('columns.pkl', 'wb') as f:
 
 print("Saved: churn_model.pkl, scaler.pkl, columns.pkl")
 print("Columns:", len(X.columns))
+
+print("\n--- How to use saved model on new data ---")
+# New data might have a category we never saw, e.g. new Contract type.
+# get_dummies would make different columns -> model breaks.
+# Fix: reindex to saved columns, fill missing with 0.
+# Example:
+# X_new = pd.get_dummies(new_df, drop_first=True)
+# X_new = X_new.reindex(columns=list(X.columns), fill_value=0)
+# X_new_scaled = scaler_full.transform(X_new)
+# pred = final_model.predict(X_new_scaled)
+print("Rule: Always reindex new data to saved columns before predicting. See comments above.")
